@@ -19,7 +19,7 @@ The server handles the full Joiner and Leaver flow. Okta checks whether a user e
 
 Built a SCIM 2.0 server in Express with the core endpoints Okta's SCIM client requires.
 
-[SCREENSHOT: index.js code / server running in terminal]
+<img width="448" height="154" alt="image" src="https://github.com/user-attachments/assets/82327593-f65f-44ec-97d2-c09cee8e6005" />
 
 - GET /scim/v2/ServiceProviderConfig, describes what the server supports
 - GET /scim/v2/Users, lists users and supports Okta's filter query (userName eq "user@example.com") used to check if a user already exists
@@ -32,13 +32,13 @@ Built a SCIM 2.0 server in Express with the core endpoints Okta's SCIM client re
 
 Okta's cloud service needs a public URL to reach the server, so cloudflared was used to expose the local Node server on localhost:3000 through a public HTTPS endpoint without opening any inbound ports.
 
-[SCREENSHOT: cloudflared tunnel running with public URL]
+<img width="1050" height="150" alt="image" src="https://github.com/user-attachments/assets/50e88668-95ea-4937-bf8c-698640a0a7fc" />
 
 ### Connecting to Okta
 
 Configured Okta's SCIM 2.0 Test App (Header Auth), pointed the Base URL at the live Cloudflare tunnel address, and enabled Create Users, Update User Attributes, and Deactivate Users under Provisioning to App.
 
-[SCREENSHOT: Okta provisioning integration verified successfully]
+<img width="1045" height="682" alt="image" src="https://github.com/user-attachments/assets/91bd0185-ffcb-4676-89be-e1cf815a437a" />
 
 ### Debugging the Integration
 
