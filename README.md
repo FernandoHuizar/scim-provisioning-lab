@@ -54,7 +54,7 @@ Issues found and fixed, in order:
 6. Okta sends POST and PATCH bodies with Content-Type application/scim+json, which Express's default JSON parser doesn't recognize by default, so the body came through as undefined. Had to explicitly tell express.json() to accept that content type.
 7. Okta's deactivation PATCH request nested the active field inside the operation's value object instead of using a path field like I originally coded for. Had the PATCH handler support both formats.
 
-[SCREENSHOT: user created log + PATCH deactivation log in terminal]
+<img width="1048" height="526" alt="image" src="https://github.com/user-attachments/assets/592b63d6-bdfa-447b-ae01-a9a72b686596" />
 
 ### Verifying the Full Flow
 
@@ -64,7 +64,7 @@ Confirmed the full lifecycle worked using a real Okta assignment:
 - Unassigned the user in Okta, which triggered a PATCH request, and the server correctly set the user's active status to false.
 - Verified both directly by hitting the live public endpoint with PowerShell and confirming the user data and active status matched.
 
-[SCREENSHOT: Invoke-RestMethod result showing the created user]
+<img width="850" height="217" alt="image" src="https://github.com/user-attachments/assets/1b962dac-deda-4ae1-8ea4-14ec9fe15a0c" />
 
 ## Key Concepts Demonstrated
 
