@@ -1,78 +1,62 @@
-# SCIM Provisioning Server Lab
+# SCIM Provisioning Lab
 
-## Overview
+**The problem:** when someone joins or leaves, their accounts in every app need to be created or turned off. Doing that by hand is slow, and leavers get missed.
 
-This lab is a SCIM 2.0 provisioning server built from scratch in Node.js and connected to a live Okta tenant. Instead of configuring an existing pre-built app to receive provisioning events, this lab builds the receiving side of the integration itself, the actual API endpoints an application needs to support automated user creation and deactivation from an Identity Provider.
+**What I did:** SCIM is the standard way an identity system like Okta tells an app "create this person" or "turn this person off." I wrote a small server that plays the part of the app, connected it to a real Okta tenant, and tested that assigning a user creates their account and unassigning turns it off.
 
-The server handles the full Joiner and Leaver flow. Okta checks whether a user exists, creates the user if not, and deactivates them on offboarding, matching the real SCIM 2.0 spec that products like Salesforce and Zendesk implement to support provisioning from an IdP.
+*Lab from earlier in my learning, with code. My main project is [Havlund Pharma](https://github.com/FernandoHuizar/havlund-identity-lifecycle).*
 
-## Environment
+## IAM ideas this lab shows
 
-- Runtime: Node.js v24.20.0, Express.js
-- Identity Provider: Okta (Integrator Free Plan)
-- Public tunnel: Cloudflare Tunnel
-- Protocol: SCIM 2.0
+| Idea | What it means | Where it shows up here |
+|---|---|---|
+| Provisioning | Creating a person's account in an app automatically | Assigning a user to the app in Okta created their account on my server |
+| Deprovisioning | Turning off access when someone leaves | Unassigning the user turned the account off. It wasn't deleted, so the history stays |
+| Source of truth | One system decides who should have an account | Okta decides, the app follows |
+| Joiner and leaver | The moments access has to change | Both were tested end to end |
+| Troubleshooting with logs | Looking at what actually happened before changing settings | I logged every request Okta sent, which is how I found each problem |
 
-## What I Built
+## What I did
 
-### SCIM Server
+**1. Built the server.** A small Node.js app with the few addresses Okta needs: look up a user, create a user, update a user, and an empty group list.
 
-Built a SCIM 2.0 server in Express with the core endpoints Okta's SCIM client requires.
+<img width="448" height="154" alt="SCIM server routes" src="https://github.com/user-attachments/assets/82327593-f65f-44ec-97d2-c09cee8e6005" />
 
-<img width="448" height="154" alt="image" src="https://github.com/user-attachments/assets/82327593-f65f-44ec-97d2-c09cee8e6005" />
+**2. Made it reachable.** Okta is in the cloud and my server was on my PC, so I used Cloudflare Tunnel to give it a public HTTPS address without opening any ports.
 
-- GET /scim/v2/ServiceProviderConfig, describes what the server supports
-- GET /scim/v2/Users, lists users and supports Okta's filter query (userName eq "user@example.com") used to check if a user already exists
-- POST /scim/v2/Users, creates a new user from the data Okta sends
-- GET /scim/v2/Users/:id, retrieves one user by ID
-- PATCH /scim/v2/Users/:id, updates a user, mainly used for deactivation on offboarding
-- GET /scim/v2/Groups, returns an empty group list so Okta's sync cycle completes even without group provisioning in use
+<img width="1050" height="150" alt="Cloudflare Tunnel running" src="https://github.com/user-attachments/assets/50e88668-95ea-4937-bf8c-698640a0a7fc" />
 
-### Exposing the Server with Cloudflare Tunnel
+**3. Connected it to Okta.** Used Okta's SCIM test app, pointed it at my server, and turned on Create Users, Update User Attributes and Deactivate Users.
 
-Okta's cloud service needs a public URL to reach the server, so cloudflared was used to expose the local Node server on localhost:3000 through a public HTTPS endpoint without opening any inbound ports.
+<img width="1045" height="682" alt="Okta provisioning settings" src="https://github.com/user-attachments/assets/91bd0185-ffcb-4676-89be-e1cf815a437a" />
 
-<img width="1050" height="150" alt="image" src="https://github.com/user-attachments/assets/50e88668-95ea-4937-bf8c-698640a0a7fc" />
+**4. Tested the joiner and leaver.**
+- Assigned a test user in Okta. Okta checked if they existed, saw they didn't, and created them.
+- Unassigned the user. Okta told the server to turn the account off, and it did.
+- Checked both results directly on the server with PowerShell.
 
-### Connecting to Okta
+<img width="850" height="217" alt="User created and turned off" src="https://github.com/user-attachments/assets/1b962dac-deda-4ae1-8ea4-14ec9fe15a0c" />
 
-Configured Okta's SCIM 2.0 Test App (Header Auth), pointed the Base URL at the live Cloudflare tunnel address, and enabled Create Users, Update User Attributes, and Deactivate Users under Provisioning to App.
+## What broke and how I fixed it
 
-<img width="1045" height="682" alt="image" src="https://github.com/user-attachments/assets/91bd0185-ffcb-4676-89be-e1cf815a437a" />
+I added logging so I could see exactly what Okta sent instead of guessing. That found 7 problems:
 
-### Debugging the Integration
+1. **The real blocker was a setting.** Create Users and Deactivate Users were never turned on in Okta. Okta was checking for users but wasn't allowed to create them.
+2. **Two copies of the same route.** Only the first one ran, so my fix in the second one never took effect.
+3. **Wrong response type.** Okta expects `application/scim+json`, not plain JSON.
+4. **Missing fields in the user list.** Okta also expects `startIndex` and `itemsPerPage`.
+5. **Missing group address.** Okta checks groups even when you don't use them, so it needed an empty answer instead of an error.
+6. **Request body came through empty.** The server didn't recognize Okta's content type until I told it to.
+7. **Leaver request in a different shape.** Okta sent "turn off" in a format I hadn't planned for, so I made the server accept both.
 
-Getting real provisioning working end to end took several rounds of debugging. Added request and response logging directly into the server so I could see exactly what Okta was sending instead of guessing.
+<img width="1048" height="526" alt="Request logging" src="https://github.com/user-attachments/assets/592b63d6-bdfa-447b-ae01-a9a72b686596" />
 
-Issues found and fixed, in order:
+## What I learned
 
-1. Had two GET /scim/v2/Users routes by accident. Express only runs the first match, so a later fix to the response format was silently never taking effect.
-2. Responses needed the Content-Type header set to application/scim+json, not just application/json, to match what Okta's SCIM client expects.
-3. Okta's ListResponse expects startIndex and itemsPerPage alongside totalResults, the response was missing those.
-4. Okta checks a /scim/v2/Groups endpoint as part of its sync even when groups aren't used. A missing route meant a 404 there, which needed a valid empty response instead.
-5. The actual root cause blocking user creation the whole time. The Create Users, Update User Attributes, and Deactivate Users toggles in Okta's Provisioning to App settings were never enabled. Okta was correctly checking if the user existed but was never authorized to create one.
-6. Okta sends POST and PATCH bodies with Content-Type application/scim+json, which Express's default JSON parser doesn't recognize by default, so the body came through as undefined. Had to explicitly tell express.json() to accept that content type.
-7. Okta's deactivation PATCH request nested the active field inside the operation's value object instead of using a path field like I originally coded for. Had the PATCH handler support both formats.
+- Most provisioning problems are settings or mismatched expectations, not broken code. Check the logs first.
+- Turning an account off is safer than deleting it, because you keep the record of who had access.
+- Apps like Salesforce and Zendesk do this same job when Okta provisions to them.
 
-<img width="1048" height="526" alt="image" src="https://github.com/user-attachments/assets/592b63d6-bdfa-447b-ae01-a9a72b686596" />
+## Built with
 
-### Verifying the Full Flow
-
-Confirmed the full lifecycle worked using a real Okta assignment:
-
-- Assigned a test user to the app in Okta. Okta checked for an existing user with a filtered GET, got an empty result back, then sent a POST that created the user on the server (201 response).
-- Unassigned the user in Okta, which triggered a PATCH request, and the server correctly set the user's active status to false.
-- Verified both directly by hitting the live public endpoint with PowerShell and confirming the user data and active status matched.
-
-<img width="850" height="217" alt="image" src="https://github.com/user-attachments/assets/1b962dac-deda-4ae1-8ea4-14ec9fe15a0c" />
-
-## Key Concepts Demonstrated
-
-- SCIM 2.0 protocol implementation, building the provisioning target side of an integration instead of just configuring one
-- Full Joiner and Leaver lifecycle automation, driven entirely by Okta as the source of truth
-- Debugging an API integration using real request and response logging instead of assumptions
-- Exposing a local server to the internet for testing IdP integrations without needing permanent hosting infrastructure
-
-## Technologies Used
-
-Node.js, Express.js, SCIM 2.0, Okta, Cloudflare Tunnel, REST API
+Node.js, Express, SCIM 2.0, Okta (Integrator Free Plan), Cloudflare Tunnel.
